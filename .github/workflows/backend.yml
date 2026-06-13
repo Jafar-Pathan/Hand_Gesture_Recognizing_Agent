@@ -1,0 +1,59 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'backend/**'
+      - 'ai/**'
+      - 'tests/**'
+      - 'requirements.txt'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'ai/**'
+      - 'tests/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install opencv-python-headless
+
+      - name: Run linting (ruff)
+        run: |
+          pip install ruff
+          ruff check backend/ ai/ tests/ --ignore E501,E402
+
+      - name: Run tests with coverage
+        env:
+          DATABASE_URL: sqlite:///./test_gesture.db
+          SECRET_KEY: ci-test-secret-key-not-for-production
+          ENVIRONMENT: test
+        run: |
+          pytest tests/ -v --cov=backend --cov-report=term-missing --cov-fail-under=70
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: .coverage

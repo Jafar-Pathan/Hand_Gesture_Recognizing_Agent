@@ -1,0 +1,41 @@
+# ── Backend Dockerfile ────────────────────────────────────────────────────────
+# Multi-stage build for a lean production image
+
+FROM python:3.11-slim AS base
+
+# System deps (OpenCV needs libgl)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# ── Install Python dependencies ───────────────────────────────────────────────
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+# ── Copy application source ───────────────────────────────────────────────────
+COPY backend/ ./backend/
+COPY ai/ ./ai/
+COPY alembic/ ./alembic/
+COPY alembic.ini .
+
+# Create directories expected at runtime
+RUN mkdir -p models logs/tensorboard dataset/raw dataset/processed
+
+# ── Non-root user ─────────────────────────────────────────────────────────────
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+RUN chown -R appuser:appgroup /app
+USER appuser
+
+# ── Runtime ───────────────────────────────────────────────────────────────────
+EXPOSE 8000
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
